@@ -28,7 +28,7 @@ LIMIT 1000
 
 ## Scaling Problem
 
-If we want up-to-date posts, clients could poll this query every 5 seconds while the user is online.
+If we want up-to-date posts, the users client could poll this query every 5 seconds while the user is online.
 
 At 10 million active users, that means roughly 2 million queries per second.
 
