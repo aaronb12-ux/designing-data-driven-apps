@@ -2,7 +2,7 @@
 
 ## Storage
 
-<img width="374" height="178" alt="Screenshot 2026-03-06 at 2 16 52 AM" src="https://github.com/user-attachments/assets/203c97f3-1abe-47d5-9c7c-7ccc98f1638e" />
+<img width="374" height="178" alt="Screenshot 2026-03-06 at 2 16 52 AM" src="https://github.com/user-attachments/assets/21e91a54-e851-4bd7-81d8-1dc2fe2da6c5" />
 
 ## Main Read Operation
 
