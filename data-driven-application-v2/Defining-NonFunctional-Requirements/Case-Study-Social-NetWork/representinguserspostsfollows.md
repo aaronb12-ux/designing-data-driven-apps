@@ -2,13 +2,7 @@
 
 ## Storage
 
-All data is stored in a relational database.
-
-| Table   | Relevant Columns                        |
-|---------|-----------------------------------------|
-| posts   | sender_id, timestamp, ...               |
-| follows | follower_id, followee_id                |
-| users   | id, ...                                 |
+<img width="374" height="178" alt="Screenshot 2026-03-06 at 2 16 52 AM" src="https://github.com/user-attachments/assets/203c97f3-1abe-47d5-9c7c-7ccc98f1638e" />
 
 ## Main Read Operation
 
