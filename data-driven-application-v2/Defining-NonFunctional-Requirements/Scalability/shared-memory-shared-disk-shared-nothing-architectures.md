@@ -1,0 +1,9 @@
+## Shared-Memory, Shared-Disk, and Shared-Nothing Architectures
+
+The simplest way of increasing the hardware resources of a service is to move it to a more powerful machine. Individual CPU cores are no longer getting significantly faster, but you can buy a machine with more CPU cores, more RAM, and more disk space. This approach is called **vertical scaling** or **scaling up**.
+
+You can get parallelism on a single machine by using multiple processes or threads. All the threads belonging to the same process can access the same RAM, and hence this approach is also called a **shared-memory architecture**. The problem with a shared-memory approach is that the cost grows faster than linearly; a high-end machine with twice the hardware resources of a lower-spec machine typically costs significantly more than twice as much. And because of bottlenecks, that machine is unlikely to actually be able to handle twice the load.
+
+Another approach is the **shared-disk architecture**, which uses several machines with independent CPUs and RAM but stores data on an array of disks that is shared among the machines, which are connected via a fast network: network-attached storage (NAS) or a storage area network (SAN). This architecture has traditionally been used for on-premises data warehousing workloads, but contention and the overhead of locking limit the scalability of the shared-disk approach.
+
+By contrast, the **shared-nothing architecture** (also called **horizontal scaling** or **scaling out**) involves a distributed system with multiple nodes, each of which has its own CPUs, RAM, and disks. Any coordination between nodes is done at the software level, via a conventional network. The advantages of this approach are that it has the potential to scale linearly, it can use whatever hardware offers the best price/performance ratio, and it can achieve greater fault tolerance by distributing the system across multiple data centers and regions.
