@@ -21,3 +21,9 @@ Several data models are widely used in practice, often for different purposes. S
 In this chapter we explore these trade-offs by comparing the relational model, the document model, graph-based data models, event sourcing, and dataframes.
 
 ### Terminology: Declarative Query Languages
+
+Many of the query languages in this chapter (SQL, Cypher, SPARQL, and Datalog) are declarative, which means that you specify the pattern of the data you want - what conditions the results must meet and how you want the data to be transformed (sorted, grouped, aggregated) - but not how to achieve that goal. The database system's query optimizer can decide which indexes and join algorithms to use and in which order to execute various parts of the query.
+
+In contrast, with most programming languages, you would have to write an algorithm telling the computer which operations to perform in which order.
+
+A database might be able to execute a declarative query in parallel across multiple CPU cores and machines, without you having to worry about how to implement that parallelism. In a hardcoded algorithm, it would be a lot of work to implement such parallel execution yourself.
