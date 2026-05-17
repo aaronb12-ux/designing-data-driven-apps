@@ -11,6 +11,7 @@ The below figure shows an example of a star schema that might be found in the da
 If we were analyzing website traffic rather than retail sales, each row might represent a page view or click by a user.
  
 <img width="527" height="454" alt="Screenshot 2026-05-17 at 1 49 02 PM" src="https://github.com/user-attachments/assets/df55c198-34fc-4b0a-83b1-cc6c52f78dae" />
+
 ### Fact Tables
  
 Facts are captured as individual events, because this allows maximum flexibility of analysis later. This means that the fact table can become extremely large. A big enterprise may have many petabytes of transaction history in its data warehouse, mostly represented as fact tables.
