@@ -41,3 +41,20 @@ Because the keys are sorted, we know that `handiwork` must appear between `handb
 3. Scan the file from that point until we find `handiwork`.
 
 This allows us to locate keys efficiently without storing an index entry for every key.
+
+### Constructing and Merging SSTables
+
+SSTable writes can be difficult because we need to keep all the strings in sorted order without rewriting the entire file every time. We cannot just do a linear scan on the disk file to insert a new key, because inserting data into the middle of a file requires shifting all the subsequent data on the disk. That operation is incredibly slow.
+
+Instead, we can use **Red-Black Trees** or **Skip Lists** that are stored in memory to keep incoming data sorted on-the-fly without performance penalties. This in-memory data structure is called a *memtable*.
+
+Once this table gets bigger than a set threshold, we write it out to the disk in sorted order as an SSTable file.
+
+When we want to search for keys, we first check the memtable and the most recent on-disk segment. If it's not there, we check the next-oldest segment until we find the key or reach the oldest segment.
+
+Eventually, we merge segments, which works like the **mergesort** algorithm. In the figure below, we essentially merge all the unique keys in each segment into one.
+
+<img width="344" height="273" alt="Screenshot 2026-10-05 at 1 38 57 AM" src="https://github.com/user-attachments/assets/343db503-655d-4897-b2a0-68f10323365b" />
+
+
+
