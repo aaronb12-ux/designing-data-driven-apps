@@ -81,6 +81,23 @@ Though this typically is not a problem because if the Bloom filter says that a k
 
 If the Bloom filter says the key is present, we have to consult the sparse index and decode the block of key-value pairs to check whether the key is really there.
 
+### Compaction Strategies
 
+#### Size-Tiered Compaction
 
+- Newer and smaller SSTables are successively merged into older and larger SSTables.
+- Performs better if you have mostly writes and few reads because most data is rewritten only a few times in larger sequential merges.
+
+#### Leveled Compaction
+
+- Keeps SSTable sizes fixed and groups them into increasing *levels*, where L0 contains the most recently written data.
+- More efficient for reads than size-tiered compaction because the storage engine needs to read fewer SSTables to check whether they contain the key.
+
+LSM Trees keep a cascade of SSTables that are merged in the background.
+
+## Embedded Storage Engines
+
+Databases that don't run a service over a network are **embedded databases**. They run in the same process as your application code, typically reading and writing files on the local disk.
+
+They are very commonly used in mobile apps to store the local user's data.
 
