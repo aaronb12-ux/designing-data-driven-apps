@@ -27,3 +27,17 @@ To update the value of a key, you rewrite the entire page to the disk at the cor
 The splitting algorithm, which is used when a page gets full, keeps the tree balanced. A B-Tree with \(n\) keys always has a depth of \(O(\log n)\).
 
 When splitting, we divide the page into two halves at the midpoint, then take the lowest key of the greater half and copy it to the parent to keep the references intact.
+
+## Making B-Trees Reliable
+
+Overwriting several pages at once is a dangerous operation. If the database crashes after only some of the pages have been written, we end up with a corrupted tree (e.g., there may be an orphaned page that is not a child of any parent). If the hardware can't atomically write an entire page, you can also end up with a partially written page (a **torn page**).
+
+To make the database resilient to crashes, it is common to include an additional data structure on the disk: a **write-ahead log (WAL)**. This is an append-only file to which every B-Tree modification must be written before it can be applied to the pages of the tree itself.
+
+After a crash, the database restores the B-Tree to a consistent state using this log.
+
+In filesystems, the equivalent mechanism is known as **journaling**.
+
+To improve performance, B-Tree implementations typically don't immediately write every modified page to the disk, but buffer the B-Tree pages in memory for a while first.
+
+As long as the data has been written to the WAL and flushed to the disk using the `fsync` system call, the data will be durable, as the database will be able to recover after a crash.
