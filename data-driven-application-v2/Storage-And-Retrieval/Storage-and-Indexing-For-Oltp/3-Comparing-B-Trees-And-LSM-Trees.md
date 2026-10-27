@@ -44,4 +44,8 @@ For typical workloads, LSM-Trees tend to have lower write amplification because 
 
 A storage engine with lower write amplification will wear out the SSD less quickly.
 
+## Disk Space Usage
 
+B-Trees can become fragmented over time, meaning the database file may contain a lot of pages that are no longer used by the B-Tree. Databases need a background process that moves pages around or reclaims unused space, such as the `VACUUM` process in PostgreSQL.
+
+Fragmentation is less of a problem in LSM-Trees, since the compaction process periodically rewrites the data files anyway, and SSTables don't have pages with unused space.
