@@ -1,0 +1,13 @@
+# Keeping Everything in Memory
+
+The data structures discussed so far in this chapter have all been answers to the limitations of disks.
+
+Disks are awkward to work with compared to main memory. With both magnetic disks and SSDs, data needs to be laid out carefully to achieve good read and write performance.
+
+Disks have two significant advantages: they are **durable**, and they have a lower cost per gigabyte than RAM.
+
+Many databases are not that large, so it's feasible to keep them entirely in memory, potentially distributed across several machines. This has led to the development of **in-memory databases**.
+
+Writing to disk has an operational advantage: files on disk can easily be backed up, inspected, and analyzed by external utilities.
+
+Another interesting use case for in-memory databases is providing data models that are difficult to implement with disk-based indexes. For example, Redis offers a database-like interface to various data structures, such as priority queues and sets. Because it keeps data in memory, its implementation is comparatively simple.
