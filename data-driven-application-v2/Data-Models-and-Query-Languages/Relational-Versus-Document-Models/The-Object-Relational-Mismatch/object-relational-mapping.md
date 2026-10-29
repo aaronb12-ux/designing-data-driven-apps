@@ -13,3 +13,4 @@ Object-relational mapping (ORM) frameworks like ActiveRecord and Hibernate reduc
 * For data that is well suited to a relational model, some kind of translation between the persistent relational and in-memory object representation is inevitable, and ORMs reduce the amount of boilerplate code required for this translation
 * Some ORMs help with caching the results of database queries, which can help reduce the load on the database
 * ORMs can also help with managing schema migrations and other administrative activities
+* ORMs create an abstraction between your application code and the raw SQL queries *
