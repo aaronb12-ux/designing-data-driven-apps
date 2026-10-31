@@ -12,7 +12,7 @@ If we were analyzing website traffic rather than retail sales, each row might re
  
 <img width="527" height="454" alt="Screenshot 2026-05-17 at 1 49 02 PM" src="https://github.com/user-attachments/assets/df55c198-34fc-4b0a-83b1-cc6c52f78dae" />
 
-A star schema has a central fact table surrounded by outer dimension tables, and its rows are filled with either facts on the fact itself or foreign keys alongside measurable numbers.
+A star schema has a central fact table surrounded by outer dimension tables, and its rows are filled with either facts (measureable numbers most commonly) on the fact itself or foreign keys.
 
 ### Fact Tables
  
