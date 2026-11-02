@@ -35,3 +35,25 @@ JSON supports the following data types:
 An **open content model** allows fields that are not explicitly defined in the schema to exist in the data.
 
 These additional fields can contain values of any valid JSON data type, unless further restrictions are specified.
+
+
+<img width="327" height="199" alt="Screenshot 2026-11-02 at 2 17 14 PM" src="https://github.com/user-attachments/assets/38fc2df7-9f3d-4062-9a8b-46e7c9d249ab" />
+
+
+Binary Encodings (section)
+
+Its clear that both JSON and XML used a lot of space compared to binary encodings
+
+Below is an example of data that would be binary encoded:
+{
+    "userName": "Martin",
+    "favoriteNumber": 1337,
+    "interests": ["daydreaming", "hacking"]
+}
+
+Here is an example using MessagePack
+
+<img width="373" height="344" alt="Screenshot 2026-11-02 at 2 28 07 PM" src="https://github.com/user-attachments/assets/aa185c09-b4cb-4948-9fb6-b9a1ade761e4" />
+
+
+
