@@ -24,7 +24,7 @@ JSON supports the following data types:
 
 - `string`
 - `number`
-- `integer` (a whole-number subset of `number`)
+- `integer` (a whole-number subset of `number` in JSON Schema)
 - `object`
 - `array`
 - `boolean`
@@ -82,17 +82,29 @@ message Person {
 
 ### How Protocol Buffers Work
 
-- **Field types:** Each field has a declared data type, such as `string` or `int64`.
+- **Field types:** Each field has a declared data type, such as `string` or `int64`. Protobuf strings are encoded using UTF-8.
 - **Field tags:** Each field is assigned a unique numeric tag (`1`, `2`, `3`). These tags identify the fields in the encoded data without needing to store their full field names.
 - **Compact encoding:** Protobuf combines the field tag and wire type into a single key, reducing the amount of space required. Larger tag numbers may require additional bytes.
 - **Repeated fields:** Protobuf does not use a separate array type modifier in the schema. Instead, the `repeated` keyword indicates that a field can contain multiple values. Each occurrence is encoded using the same field tag.
 
-### Key Takeaway
+## The Merits of Schemas
 
-Binary encoding formats reduce the size of serialized data compared to text-based formats such as JSON and XML.
+Many data systems also implement proprietary binary encodings for their data.
 
-- **MessagePack:** Encodes JSON-like data structures into a compact binary representation without requiring a separate schema.
-- **Protocol Buffers:** Uses a predefined schema with field tags and types to encode data efficiently.
+Most relational databases have a network protocol through which clients can send queries and receive responses. These protocols are generally specific to a particular database, and the database vendor provides a driver that decodes responses from the database's network protocol into in-memory data structures.
 
-Both formats are useful when reducing storage requirements or network bandwidth is important.
+Although textual data formats such as JSON, XML, and CSV are widespread, binary encodings based on schemas are also a viable option. They offer several advantages:
+
+- **Compactness:** Schema-based binary encodings can be considerably more compact than binary JSON variants because they can omit field names from the encoded data.
+- **Documentation:** The schema serves as a valuable form of documentation. Since the schema is required for decoding, the data's structure is explicitly defined.
+- **Compatibility checking:** Maintaining a database of schemas allows us to check whether schema changes are backward- and forward-compatible before deploying them.
+
+### Schema Evolution
+
+Schemas can evolve over time as applications introduce new fields, modify existing ones, or change their data structures.
+
+Schema evolution allows applications to change their data formats while maintaining compatibility between different versions of the code and stored data.
+
+In this way, schema-based formats can provide much of the flexibility associated with schemaless databases and schema-on-read approaches, while still maintaining an explicitly defined schema.
+
 
