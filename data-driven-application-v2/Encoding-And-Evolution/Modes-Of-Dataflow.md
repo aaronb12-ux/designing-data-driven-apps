@@ -169,7 +169,72 @@ However, a network request is fundamentally different from a local function call
 All of these differences mean there is little benefit in trying to make a remote service behave exactly like a local object in a programming language.
 
 Part of the appeal of **REST** is that it treats communication over a network as a distinct process involving the transfer of resources and representations, rather than pretending that a remote operation is simply a local function call.
-    
+
+### Load Balancers, Service Discovery, and Service Meshes
+
+A client needs to know the address of the service it wants to connect to. This process of locating available service instances is known as **service discovery**.
+
+One simple approach is to configure a client with the IP address and port where the service is running. However, this approach has limitations:
+
+- A single server can become overloaded.
+- If the server's address changes, the client must be manually reconfigured.
+- A single endpoint creates a potential single point of failure.
+
+To improve availability and scalability, multiple instances of a service are typically deployed across multiple machines. Any of these instances can handle an incoming request.
+
+**Load balancing** is the process of distributing incoming requests across multiple service instances.
+
+#### Types of Load Balancing and Service Discovery Solutions
+
+- **Hardware load balancers:** Dedicated hardware appliances installed in data centers. Clients connect to a single host and port, and incoming connections are routed to one of the servers running the service.
+
+- **Software load balancers:** Software-based solutions that perform the same general function as hardware load balancers, distributing incoming connections across multiple servers.
+
+- **Domain Name System (DNS):** Allows multiple IP addresses to be associated with a single domain name. DNS can distribute clients across different service instances, although it does not provide the same request-level routing and health-check capabilities as a dedicated load balancer.
+
+- **Service discovery systems:** Use specialized registries, such as etcd or Apache ZooKeeper, rather than relying exclusively on DNS to track which service endpoints are available.
+
+#### Service Meshes
+
+A **service mesh** is an infrastructure layer that manages communication between services. It typically uses lightweight proxies deployed alongside application instances, often through a sidecar architecture.
+
+A simplified communication flow looks like this:
+
+1. A client application sends a request to its local service proxy.
+2. The proxy handles service discovery, routing, and load balancing.
+3. The request is forwarded to a proxy associated with the destination service.
+4. The destination proxy forwards the request to the local server process.
+
+Service meshes introduce additional complexity, but they provide several advantages:
+
+- **Connection encryption:** TLS encryption can be handled at the proxy level, reducing the need for application services to manage certificates and encryption themselves.
+- **Traffic monitoring:** They can track which services communicate with one another and monitor traffic patterns.
+- **Failure detection:** They can detect service failures and help manage retries and connection failures.
+- **Load management:** They can monitor traffic load and distribute requests across available service instances.
+
+The appropriate solution depends on the organization's infrastructure, scalability requirements, and operational complexity.
+
+### Data Encoding and Evolution for RPC
+
+When designing RPC systems, we need to consider how clients and servers evolve independently.
+
+A common assumption is that **servers are updated before clients**. This is because servers are generally easier to update and control, while clients may continue running older versions.
+
+This creates two compatibility requirements:
+
+- **Backward compatibility:** Newer servers can accept requests from older clients.
+- **Forward compatibility:** Older clients can handle responses from newer servers.
+
+Compatibility depends on the encoding format and how schemas evolve:
+
+- **gRPC (Protocol Buffers) and Avro RPC:** Follow their respective schema evolution rules to maintain compatibility between different versions.
+- **REST/JSON:** Adding optional request parameters and new response fields generally maintains compatibility, provided clients and servers handle unknown fields appropriately.
+
+External API consumers may not upgrade immediately. Therefore, APIs often need to maintain long-term compatibility or support multiple API versions.
+
+**Key idea:** API versioning and schema evolution allow clients and servers to evolve independently without breaking existing applications.
+      
+      
 
     
 
