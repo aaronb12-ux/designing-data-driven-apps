@@ -30,7 +30,7 @@ Rewriting (migrating) existing data into a new schema is possible, but it can be
 
 Some storage engines handle schema changes without requiring an immediate rewrite of all existing data:
 
-- **LSM-tree storage engines:** Data is rewritten into the latest format during compaction.
+- **LSM-tree storage engines:** Data may be rewritten into the latest format during compaction.
 - **Relational databases:** Many allow simple schema changes, such as adding a new column with a `NULL` default value, without immediately rewriting existing rows.
 
 When an old row is read, the database can supply `NULL` for any columns that are missing from the data stored on disk.
@@ -137,8 +137,10 @@ from pydantic import BaseModel
 
 app = FastAPI(title="Ping, Pong", version="1.0.0")
 
+
 class PongResponse(BaseModel):
     message: str = "Pong!"
+
 
 @app.get(
     "/ping",
@@ -178,7 +180,7 @@ One simple approach is to configure a client with the IP address and port where 
 
 - A single server can become overloaded.
 - If the server's address changes, the client must be manually reconfigured.
-- A single endpoint creates a potential single point of failure.
+- A single server endpoint can become a single point of failure.
 
 To improve availability and scalability, multiple instances of a service are typically deployed across multiple machines. Any of these instances can handle an incoming request.
 
@@ -192,7 +194,7 @@ To improve availability and scalability, multiple instances of a service are typ
 
 - **Domain Name System (DNS):** Allows multiple IP addresses to be associated with a single domain name. DNS can distribute clients across different service instances, although it does not provide the same request-level routing and health-check capabilities as a dedicated load balancer.
 
-- **Service discovery systems:** Use specialized registries, such as etcd or Apache ZooKeeper, rather than relying exclusively on DNS to track which service endpoints are available.
+- **Service discovery systems:** Use specialized registries, such as etcd or Apache ZooKeeper, to track which service endpoints are available.
 
 #### Service Meshes
 
@@ -233,10 +235,97 @@ Compatibility depends on the encoding format and how schemas evolve:
 External API consumers may not upgrade immediately. Therefore, APIs often need to maintain long-term compatibility or support multiple API versions.
 
 **Key idea:** API versioning and schema evolution allow clients and servers to evolve independently without breaking existing applications.
-      
-      
 
-    
+## Durable Execution and Workflows
 
+A sequence of service calls resulting from an initial client request is known as a **workflow**.
+
+Workflow engines coordinate the execution of these workflows.
+
+![Workflow diagram](https://github.com/user-attachments/assets/8099ef7d-be71-44b6-be6d-52cdacda1e7f)
+
+Two important components are:
+
+- **Orchestrator:** Responsible for scheduling tasks to be executed.
+- **Executor:** Responsible for executing tasks.
+
+### Durable Execution
+
+**Durable execution** is a type of workflow execution that persists workflow progress so that execution can recover after failures.
+
+Durable execution frameworks are useful for building service-based architectures that involve multiple steps and need to recover reliably when individual steps fail.
+
+A core feature is that the framework records completed operations. If a workflow fails and needs to restart, it can replay the workflow while reusing the recorded results of previously completed operations instead of executing those operations again.
+
+For example:
+
+1. A workflow calls a fraud-checking service.
+2. The fraud-checking service succeeds, and its result is recorded.
+3. The workflow calls a payment service.
+4. The payment service fails.
+5. The workflow restarts.
+6. The framework reuses the recorded fraud-check result and retries the payment operation.
+
+A Temporal workflow definition fragment for the payment workflow in the example above:
+
+```python
+@workflow.defn
+class PaymentWorkflow:
+    @workflow.run
+    async def run(self, payment: PaymentRequest) -> PaymentResult:
+        is_fraud = await workflow.execute_activity(
+            check_fraud,
+            payment,
+            start_to_close_timeout=timedelta(seconds=15)
+        )
+
+        if is_fraud:
+            return PaymentResultFraudulent
+
+        credit_card_response = await workflow.execute_activity(
+            debit_credit_card,
+            payment,
+            start_to_close_timeout=timedelta(seconds=15)
+        )
+        # ...
+```
+
+Durable execution frameworks expect workflow code to be **deterministic**: the same recorded inputs and history must produce the same workflow decisions during replay.
+
+Introducing nondeterministic operations directly into workflow code, such as generating random numbers or reading the system clock, can cause problems because the results may differ during replay.
+
+Instead, nondeterministic operations should generally be performed through activities or framework-provided APIs that record their results.
+
+**Important distinction:** Durable execution provides reliable workflow recovery, but it does not automatically guarantee exactly-once execution of external side effects. Activities may execute more than once if a failure occurs before the framework records their completion. External operations should therefore be designed to be idempotent when possible.
+
+## Event-Driven Architectures
+
+Another way encoded data can flow from one process to another is through **asynchronous messaging**.
+
+Instead of directly calling another service, a process sends an event or message to a **message broker**.
+
+### Advantages of a Message Broker
+
+- **Buffering:** Acts as a buffer between senders and consumers, allowing messages to wait until consumers are ready.
+- **Redelivery:** Can redeliver messages when a consumer crashes or fails to acknowledge successful processing.
+- **Multiple recipients:** Allows the same message to be delivered to several recipients.
+- **Decoupling:** Separates the sender from the recipient, so they do not need to communicate directly or be available at the same time.
+
+Communication through a message broker is **asynchronous**: the sender does not wait for the message to be processed or delivered to the recipient. It sends the message to the broker and continues its own work.
+
+### Message Brokers
+
+Message brokers generally do not enforce a particular message schema. However, applications can use formats such as Protocol Buffers, Avro, or JSON to encode messages according to defined schemas.
+
+**AsyncAPI** can be used to describe asynchronous APIs, including message channels, operations, and message schemas.
+
+There are two common messaging patterns:
+
+- **Queues:** A producer adds a message to a named queue. A consumer retrieves messages from that queue. Typically, each message is processed by one consumer in a consumer group.
+- **Topics:** A producer publishes a message to a named topic. The broker delivers the message to subscribers of that topic, allowing multiple consumers to receive the same event.
+
+Brokers often persist messages to disk so they can survive broker crashes.
+
+Unlike databases, many message brokers automatically delete messages after they have been consumed or acknowledged. However, retention behavior depends on the broker: some systems retain messages for a configured period regardless of whether consumers have processed them.
   
   
