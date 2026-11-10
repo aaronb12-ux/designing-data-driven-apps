@@ -101,3 +101,7 @@ Databases that don't run a service over a network are **embedded databases**. Th
 
 They are very commonly used in mobile apps to store the local user's data.
 
+### Key Idea of LSM Tree
+
+With an LSM tree, data is first stored in a memtable in memory whcih is typically a red-black tree or skip list. then once this table becomes to large, it becomes an SStable on the disk. then, if the disk is becoming large, we compact the SStables
+
