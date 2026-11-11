@@ -1,331 +1,262 @@
 # Modes of Dataflow
 
-We will discuss the most common ways data flows between processes:
+Data commonly moves between processes through:
 
-- Through databases
-- Through service calls
-- Through workflow engines
-- Through asynchronous messages
+| Mode | Basic idea |
+|---|---|
+| Databases | One process writes data that another process reads later. |
+| Service calls | A client requests work from a server through an API. |
+| Workflow engines | A coordinator manages a sequence of tasks and recovery. |
+| Asynchronous messaging | Producers send messages that consumers process independently. |
 
-## Dataflow Through Databases
+Across all four modes, consider:
 
-In a database, the process that writes data encodes it, while the process that reads the data decodes it.
+- How is the data encoded?
+- Can different versions understand it?
+- What happens when a process or network connection fails?
+- Is retrying safe?
 
-Think of storing something in a database as **sending a message to your future self**.
+## 1. Dataflow Through Databases
 
-It is common for multiple processes to access the same database simultaneously. These processes might be:
+Storing data is like sending a message to a future reader.
 
-- Different applications or services.
-- Multiple instances of the same service running in parallel for scalability or fault tolerance.
-
-As a result, some processes may be running newer versions of the code while others are still running older versions.
-
-This means a value in the database could be written by a newer version of the code and subsequently read by an older version.
-
-Therefore, **forward compatibility is particularly important when using databases**.
-
-### Different Values Written at Different Times
-
-Rewriting (migrating) existing data into a new schema is possible, but it can be expensive when dealing with large datasets.
-
-Some storage engines handle schema changes without requiring an immediate rewrite of all existing data:
-
-- **LSM-tree storage engines:** Data may be rewritten into the latest format during compaction.
-- **Relational databases:** Many allow simple schema changes, such as adding a new column with a `NULL` default value, without immediately rewriting existing rows.
-
-When an old row is read, the database can supply `NULL` for any columns that are missing from the data stored on disk.
-
-Schema evolution therefore allows the database to appear as though all records use a single, consistent schema, even though the underlying storage may contain records written using different historical versions of the schema.
-
-More complex schema changes may require rewriting data at the application level. Examples include:
-
-- Changing a single-valued attribute into a multivalued attribute.
-- Moving data from an existing table into a separate table.
-
-### Archival Storage
-
-It is common to take snapshots of a database for backup purposes or to load data into a data warehouse.
-
-It is useful to encode data consistently across different schema versions because snapshots taken at different points in time may contain data written using different historical schemas.
-
-Since a database dump is typically written in one operation and remains immutable afterward, formats such as **Avro Object Container Files** are a good fit.
-
-They allow records to be stored together with the schema needed to interpret them, making them suitable for large, immutable data dumps.
-
-## Dataflow Through Services: REST and RPC
-
-The most common way for processes to communicate over a network is through services:
-
-- **Servers:** Expose an API over a network.
-- **Clients:** Connect to servers and make requests to their APIs.
-- **Services:** Provide functionality through an API exposed by a server.
-
-The web works this way. Clients (web browsers) make requests to web servers:
-
-- `GET` requests retrieve resources such as HTML, CSS, JavaScript, and images.
-- `POST` requests submit data to the server.
-
-In some ways, services are similar to databases because they typically allow clients to submit and retrieve data.
-
-However, services expose an **application-specific API** that only allows inputs and outputs predetermined by the business logic of the application.
-
-This means services can impose fine-grained restrictions on what clients can and cannot do.
-
-A key design goal of a **service-oriented architecture (SOA)** or **microservice architecture** is to make applications easier to change and maintain by making services independently deployable and evolvable.
-
-### Web Services
-
-A service that uses HTTP as its communication protocol is known as a **web service**.
-
-Web services are used in several contexts, not just on the public web:
-
-- A client application running on a user's device makes requests to a service over HTTP through the public internet.
-- One service makes requests to another service within the same organization.
-- One service makes requests to a service owned by a different organization, usually over the internet.
-
-### Interface Description Languages (IDLs)
-
-Service developers often use an **IDL (Interface Description Language)** to define and document their service's API endpoints and data models, as well as manage changes to them over time.
-
-An IDL is a specialized, human-readable language used to define the API or communication interface between different software components, regardless of the programming languages they are written in.
-
-For example, **OpenAPI** allows developers to describe HTTP APIs using YAML or JSON.
-
-#### Example: OpenAPI Service Definition
-
-```yaml
-openapi: 3.0.0
-info:
-  title: Ping, Pong
-  version: 1.0.0
-servers:
-  - url: http://localhost:8080
-paths:
-  /ping:
-    get:
-      summary: Given a ping, returns a pong message
-      responses:
-        '200':
-          description: A pong
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  message:
-                    type: string
-                    example: Pong!
+```text
+Writer → Database → Reader
 ```
 
-### Service Frameworks
+The reader might be another application instance—or a newer version of your own application months later.
 
-Service frameworks allow developers to focus on writing the business logic for each API endpoint, while the framework handles common infrastructure tasks, such as:
+### Compatibility Matters in Both Directions
 
-- Request routing
-- Metrics and monitoring
-- Caching
-- Authentication
-- Request and response handling
+During a rolling deployment, old and new application versions may access the same database.
 
-#### Example: FastAPI Service Implementation
+- New code must understand existing data.
+- Old code may encounter data written by new code.
 
-The following FastAPI application implements the `/ping` endpoint defined in the OpenAPI example.
+Database changes therefore need to account for both historical data and temporarily mixed application versions.
 
-```python
-from fastapi import FastAPI
-from pydantic import BaseModel
+> Updating the database schema does not automatically make every application version compatible with it.
 
-app = FastAPI(title="Ping, Pong", version="1.0.0")
+### Schema Changes and Migrations
 
+Some database changes can avoid rewriting every existing row immediately. Whether this is possible depends on the database, version, and specific change.
 
-class PongResponse(BaseModel):
-    message: str = "Pong!"
+More substantial changes usually need an explicit migration, such as:
 
+- Moving a field into a separate table.
+- Replacing one value with a collection.
+- Changing how existing values are interpreted.
 
-@app.get(
-    "/ping",
-    response_model=PongResponse,
-    summary="Given a ping, returns a pong message"
-)
-async def ping():
-    return PongResponse()
+The application may need to support both representations during the transition.
+
+### Archives and Backups
+
+Archived data may outlive the application version that created it.
+
+Keep enough schema information to interpret it later. Formats such as Avro Object Container Files can store records together with their writer schema.
+
+The important idea is not to memorize another format:
+
+> Long-lived data needs a long-lived explanation of its structure.
+
+## 2. Dataflow Through Services
+
+A service exposes an API that clients call over a network.
+
+```text
+Client → Request → Server
+Client ← Response ← Server
 ```
 
-FastAPI uses the route decorator to define the endpoint and Pydantic to define the response data model. It can also automatically generate OpenAPI documentation from the application.
+A client could be a browser, mobile app, or another backend service.
 
-### The Problems with Remote Procedure Calls (RPC)
+Unlike direct database access, an API exposes specific operations and applies business rules around them.
 
-A **Remote Procedure Call (RPC)** model attempts to make a request to a remote network service look like calling a function or method within the same process.
+### HTTP APIs and RPC
 
-This abstraction is sometimes called **location transparency**: the idea that the location of the code being executed should not matter to the caller.
+| Style | Main idea |
+|---|---|
+| Resource-oriented HTTP API | Exchange representations of resources using HTTP operations. |
+| RPC | Invoke an operation exposed by a remote service. |
 
-However, a network request is fundamentally different from a local function call.
+REST and RPC are not simply “JSON versus binary.” An RPC API can use JSON, and an HTTP API can use other encodings.
 
-#### Why Remote Calls Are Different
+### Remote Calls Are Not Local Calls
 
-- **Unpredictability:** A local function call typically executes within the same process and is not dependent on network connectivity. A network request can fail because of network problems, server failures, or other external conditions.
-- **Timeouts:** A local function call either returns a result, throws an exception, or never returns. A network request introduces another possible outcome: it may time out without returning a result. Importantly, the server may have successfully processed the request even though the client never received the response.
-- **Latency:** A network request is significantly slower than a local function call, and its latency is highly variable. It may respond quickly under normal conditions but become much slower when the network or server is overloaded.
-- **Data serialization:** When calling a local function, we can efficiently pass references (pointers) to objects in memory. With network requests, parameters must first be encoded into a sequence of bytes and transmitted over the network.
+A network request introduces concerns that a local function call usually does not:
 
-All of these differences mean there is little benefit in trying to make a remote service behave exactly like a local object in a programming language.
+- Network or server failure.
+- Variable response time.
+- Serialization and transmission costs.
+- Timeouts with uncertain outcomes.
 
-Part of the appeal of **REST** is that it treats communication over a network as a distinct process involving the transfer of resources and representations, rather than pretending that a remote operation is simply a local function call.
+The last point is particularly important:
 
-### Load Balancers, Service Discovery, and Service Meshes
+```text
+Client sends payment request
+        ↓
+Server processes payment
+        ↓
+Response is lost
+        ↓
+Client times out
+```
 
-A client needs to know the address of the service it wants to connect to. This process of locating available service instances is known as **service discovery**.
+The client does not know whether the payment happened.
 
-One simple approach is to configure a client with the IP address and port where the service is running. However, this approach has limitations:
+> A timeout means the caller did not receive a result in time—not necessarily that the operation failed.
 
-- A single server can become overloaded.
-- If the server's address changes, the client must be manually reconfigured.
-- A single server endpoint can become a single point of failure.
+Retries must account for this uncertainty. Idempotent operations can be retried without repeating the intended effect.
 
-To improve availability and scalability, multiple instances of a service are typically deployed across multiple machines. Any of these instances can handle an incoming request.
+## 3. API Contracts and Evolution
 
-**Load balancing** is the process of distributing incoming requests across multiple service instances.
+An API contract describes available operations, inputs, and outputs.
 
-#### Types of Load Balancing and Service Discovery Solutions
+Interface description tools include:
 
-- **Hardware load balancers:** Dedicated hardware appliances installed in data centers. Clients connect to a single host and port, and incoming connections are routed to one of the servers running the service.
+- OpenAPI for HTTP APIs.
+- Protocol Buffers service definitions for gRPC.
+- AsyncAPI for asynchronous APIs.
 
-- **Software load balancers:** Software-based solutions that perform the same general function as hardware load balancers, distributing incoming connections across multiple servers.
+Frameworks can help implement these contracts. For example, FastAPI can define endpoints and generate OpenAPI documentation from application code.
 
-- **Domain Name System (DNS):** Allows multiple IP addresses to be associated with a single domain name. DNS can distribute clients across different service instances, although it does not provide the same request-level routing and health-check capabilities as a dedicated load balancer.
+You do not need to memorize a full API specification to understand the purpose:
 
-- **Service discovery systems:** Use specialized registries, such as etcd or Apache ZooKeeper, to track which service endpoints are available.
+> A contract lets clients and servers agree on how to communicate without sharing the same implementation language.
 
-#### Service Meshes
+### Evolving an API
 
-A **service mesh** is an infrastructure layer that manages communication between services. It typically uses lightweight proxies deployed alongside application instances, often through a sidecar architecture.
+Clients and servers may upgrade at different times.
 
-A simplified communication flow looks like this:
+Adding an optional request field or a response field is often compatible, but only if validation and application behavior permit it.
 
-1. A client application sends a request to its local service proxy.
-2. The proxy handles service discovery, routing, and load balancing.
-3. The request is forwarded to a proxy associated with the destination service.
-4. The destination proxy forwards the request to the local server process.
+External clients may remain on old versions for a long time. Plan compatibility or explicit versioning rather than assuming everyone upgrades together.
 
-Service meshes introduce additional complexity, but they provide several advantages:
+## 4. Finding and Routing to Services
 
-- **Connection encryption:** TLS encryption can be handled at the proxy level, reducing the need for application services to manage certificates and encryption themselves.
-- **Traffic monitoring:** They can track which services communicate with one another and monitor traffic patterns.
-- **Failure detection:** They can detect service failures and help manage retries and connection failures.
-- **Load management:** They can monitor traffic load and distribute requests across available service instances.
+These concepts solve different parts of service communication:
 
-The appropriate solution depends on the organization's infrastructure, scalability requirements, and operational complexity.
+| Concept | Question it answers |
+|---|---|
+| Service discovery | Where are the available service instances? |
+| Load balancing | Which instance should receive this request? |
+| Service mesh | How can common communication policies be managed across services? |
 
-### Data Encoding and Evolution for RPC
+### Service Discovery and Load Balancing
 
-When designing RPC systems, we need to consider how clients and servers evolve independently.
+Instead of hardcoding one machine's address, clients can use DNS, a discovery system, or a stable load-balancer endpoint.
 
-A common assumption is that **servers are updated before clients**. This is because servers are generally easier to update and control, while clients may continue running older versions.
+```text
+Client → Load balancer → Available service instance
+```
 
-This creates two compatibility requirements:
+Multiple instances can increase capacity and availability, provided traffic is routed to healthy instances.
 
-- **Backward compatibility:** Newer servers can accept requests from older clients.
-- **Forward compatibility:** Older clients can handle responses from newer servers.
+### Service Meshes
 
-Compatibility depends on the encoding format and how schemas evolve:
+A service mesh adds infrastructure for service-to-service communication, often using proxies.
 
-- **gRPC (Protocol Buffers) and Avro RPC:** Follow their respective schema evolution rules to maintain compatibility between different versions.
-- **REST/JSON:** Adding optional request parameters and new response fields generally maintains compatibility, provided clients and servers handle unknown fields appropriately.
+It can help provide:
 
-External API consumers may not upgrade immediately. Therefore, APIs often need to maintain long-term compatibility or support multiple API versions.
+- Encrypted connections.
+- Traffic routing and load balancing.
+- Communication metrics.
+- Configurable timeout and retry policies.
 
-**Key idea:** API versioning and schema evolution allow clients and servers to evolve independently without breaking existing applications.
+It also adds complexity. Recognize the concept; you do not need a service mesh merely because an application has multiple services.
 
-## Durable Execution and Workflows
+## 5. Durable Execution and Workflows
 
-A sequence of service calls resulting from an initial client request is known as a **workflow**.
+A workflow coordinates multiple steps toward a business outcome.
 
-Workflow engines coordinate the execution of these workflows.
+```text
+Check fraud → Charge payment → Confirm order
+```
+
+A workflow engine tracks progress and schedules work. Workers execute the individual tasks.
 
 ![Workflow diagram](https://github.com/user-attachments/assets/8099ef7d-be71-44b6-be6d-52cdacda1e7f)
 
-Two important components are:
-
-- **Orchestrator:** Responsible for scheduling tasks to be executed.
-- **Executor:** Responsible for executing tasks.
-
 ### Durable Execution
 
-**Durable execution** is a type of workflow execution that persists workflow progress so that execution can recover after failures.
-
-Durable execution frameworks are useful for building service-based architectures that involve multiple steps and need to recover reliably when individual steps fail.
-
-A core feature is that the framework records completed operations. If a workflow fails and needs to restart, it can replay the workflow while reusing the recorded results of previously completed operations instead of executing those operations again.
+Durable execution persists progress so execution can recover after crashes.
 
 For example:
 
-1. A workflow calls a fraud-checking service.
-2. The fraud-checking service succeeds, and its result is recorded.
-3. The workflow calls a payment service.
-4. The payment service fails.
-5. The workflow restarts.
-6. The framework reuses the recorded fraud-check result and retries the payment operation.
+1. A fraud check completes and its result is recorded.
+2. The payment activity encounters a failure.
+3. The system recovers.
+4. It reuses the recorded fraud-check result.
+5. It retries the payment activity according to its retry policy.
 
-A Temporal workflow definition fragment for the payment workflow in the example above:
+In Temporal, workflow history supports replay, while activities perform operations such as API calls and database writes. [92][96]
 
-```python
-@workflow.defn
-class PaymentWorkflow:
-    @workflow.run
-    async def run(self, payment: PaymentRequest) -> PaymentResult:
-        is_fraud = await workflow.execute_activity(
-            check_fraud,
-            payment,
-            start_to_close_timeout=timedelta(seconds=15)
-        )
+### Deterministic Workflow Logic
 
-        if is_fraud:
-            return PaymentResultFraudulent
+Replay must produce decisions consistent with recorded history.
 
-        credit_card_response = await workflow.execute_activity(
-            debit_credit_card,
-            payment,
-            start_to_close_timeout=timedelta(seconds=15)
-        )
-        # ...
+In Temporal:
+
+- Keep workflow logic deterministic.
+- Put external I/O in activities.
+- Use framework-provided APIs for time and randomness when needed in workflow code. [92]
+
+### Recovery Does Not Mean Exactly-Once Side Effects
+
+An activity might complete an external action, then crash before its completion is recorded. The engine may retry it.
+
+Payment and other side-effecting activities therefore need retry-safe behavior, such as an idempotency key. [95]
+
+> Durable execution preserves workflow progress; it does not automatically prevent duplicate external actions.
+
+## 6. Asynchronous Messaging
+
+With messaging, producers send work or events through a broker rather than calling consumers directly.
+
+```text
+Producer → Broker → Consumer
 ```
 
-Durable execution frameworks expect workflow code to be **deterministic**: the same recorded inputs and history must produce the same workflow decisions during replay.
+The producer does not wait for the consumer to finish processing. It may still wait for the broker to confirm acceptance.
 
-Introducing nondeterministic operations directly into workflow code, such as generating random numbers or reading the system clock, can cause problems because the results may differ during replay.
+### Why Use a Broker?
 
-Instead, nondeterministic operations should generally be performed through activities or framework-provided APIs that record their results.
+- Buffering: Consumers can process work after a traffic burst.
+- Availability separation: Producers and consumers need not be running simultaneously, subject to retention and durability settings.
+- Redelivery: Failed processing can be retried.
+- Fan-out: Multiple subscribers can receive the same event.
+- Decoupling: Producers do not need to know each consumer's address.
 
-**Important distinction:** Durable execution provides reliable workflow recovery, but it does not automatically guarantee exactly-once execution of external side effects. Activities may execute more than once if a failure occurs before the framework records their completion. External operations should therefore be designed to be idempotent when possible.
+### Queues vs. Publish/Subscribe
 
-## Event-Driven Architectures
+| Pattern | Typical use |
+|---|---|
+| Work queue | Distribute tasks among workers; one worker handles a given delivery. |
+| Publish/subscribe | Deliver an event to multiple independent subscribers. |
 
-Another way encoded data can flow from one process to another is through **asynchronous messaging**.
+Broker terminology varies. In log-based systems, a topic can have multiple consumer groups, with each group independently processing the stream.
 
-Instead of directly calling another service, a process sends an event or message to a **message broker**.
+Neither pattern automatically guarantees exactly-once processing.
 
-### Advantages of a Message Broker
+### Acknowledgments and Retention
 
-- **Buffering:** Acts as a buffer between senders and consumers, allowing messages to wait until consumers are ready.
-- **Redelivery:** Can redeliver messages when a consumer crashes or fails to acknowledge successful processing.
-- **Multiple recipients:** Allows the same message to be delivered to several recipients.
-- **Decoupling:** Separates the sender from the recipient, so they do not need to communicate directly or be available at the same time.
+A consumer acknowledgment tells the broker that processing has completed, according to the application's acknowledgment policy.
 
-Communication through a message broker is **asynchronous**: the sender does not wait for the message to be processed or delivered to the recipient. It sends the message to the broker and continues its own work.
+If a consumer crashes before acknowledgment, the message may be delivered again. Consumers should therefore be prepared for duplicates.
 
-### Message Brokers
+Retention also varies:
 
-Message brokers generally do not enforce a particular message schema. However, applications can use formats such as Protocol Buffers, Avro, or JSON to encode messages according to defined schemas.
+- Some queues remove messages after acknowledgment.
+- Some logs retain messages for a configured period regardless of consumption.
 
-**AsyncAPI** can be used to describe asynchronous APIs, including message channels, operations, and message schemas.
+Persistence and delivery guarantees depend on configuration, not just the presence of a broker.
 
-There are two common messaging patterns:
+## What to Remember
 
-- **Queues:** A producer adds a message to a named queue. A consumer retrieves messages from that queue. Typically, each message is processed by one consumer in a consumer group.
-- **Topics:** A producer publishes a message to a named topic. The broker delivers the message to subscribers of that topic, allowing multiple consumers to receive the same event.
-
-Brokers often persist messages to disk so they can survive broker crashes.
-
-Unlike databases, many message brokers automatically delete messages after they have been consumed or acknowledged. However, retention behavior depends on the broker: some systems retain messages for a configured period regardless of whether consumers have processed them.
-  
-  
+- Databases connect writers and readers across time.
+- Service calls provide direct request-response interaction but introduce uncertain failure outcomes.
+- Workflow engines coordinate multi-step progress and recovery.
+- Brokers separate message production from processing.
+- Schema compatibility matters wherever different versions exchange data.
+- Retries and duplicate processing are normal design concerns.
+- Always ask: “If this action succeeds but its acknowledgment is lost, what happens next?”
