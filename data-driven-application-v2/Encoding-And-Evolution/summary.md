@@ -1,37 +1,41 @@
-# Summary
+# Summary: Encoding and Evolution
 
-We discussed several ways of encoding data structures into byte sequences for transmission over a network or storage on disk.
+Encoding turns application data into bytes for storage or transmission. Format choices affect message size, interoperability, and how safely the application can change over time.
 
-The details of these encoding formats affect not only **efficiency**, but more importantly, the **architecture of applications and their ability to evolve over time**.
+## 1. Compatibility Enables Independent Updates
 
-## Rolling Upgrades and Compatibility
+Rolling upgrades, older clients, and historical data mean different versions must coexist.
 
-Many services need to support **rolling upgrades**, where a new version of a service is gradually deployed to a few nodes at a time rather than updating all nodes simultaneously.
+- Backward compatibility: New code can read old data.
+- Forward compatibility: Old code can read new data.
 
-Benefits include:
+Compatibility depends on both the encoding format and application behavior. Successfully reading a record does not guarantee that rewriting it will preserve unfamiliar fields.
 
-- Less risky deployments.
-- Reduced downtime.
-- Greater **evolvability**: the ease of making changes to an application over time.
+## 2. Encoding Formats Have Different Trade-Offs
 
-To support rolling upgrades, data flowing through a system must be encoded in a way that provides:
+| Category | Examples | Main consideration |
+|---|---|---|
+| Language-specific | Programming-language serialization formats | May tightly couple readers and writers to a language or runtime. |
+| Text | JSON, XML, CSV | Readable and widely supported; compatibility still requires an agreed structure. |
+| Binary without a required application schema | MessagePack | Compact representation, but applications still need shared expectations. |
+| Schema-driven binary | Protobuf, Avro | Explicit structure and evolution rules; changes must follow those rules. |
 
-- **Backward compatibility:** Newer code can read data written by older code.
-- **Forward compatibility:** Older code can read data written by newer code.
+> A schema helps define a contract. It does not make every change compatible automatically.
 
-## Encoding Formats and Their Compatibility Properties
+## 3. Four Modes of Dataflow
 
-We discussed several encoding formats:
+| Mode | How data moves |
+|---|---|
+| Databases | One process writes data that another reads later. |
+| Service calls | Clients and servers exchange encoded requests and responses. |
+| Workflow engines | Persisted progress coordinates tasks and recovery. |
+| Asynchronous messaging | Producers send messages that consumers process independently. |
 
-- **Programming-language-specific formats:** Often restricted to applications written in a particular programming language.
-- **Textual formats (JSON, XML, CSV):** Widely used, but their compatibility depends on how they are structured and how applications handle changes.
-- **Binary schema-driven formats (Protocol Buffers and Avro):** Provide compact, efficient encoding with clearly defined rules for forward and backward compatibility.
+Across all four, ask:
 
-## Modes of Dataflow
+- Can different versions interpret the data?
+- What happens if processing fails?
+- Can retries duplicate an action?
+- Will existing data remain readable?
 
-We discussed three common ways encoded data flows between processes:
-
-- **Databases:** The process writing to the database encodes the data, and the process reading from the database decodes it.
-- **RPC and REST APIs:** The client encodes a request, the server decodes it, and the server then encodes a response that the client decodes.
-- **Event-driven architectures (message brokers):** Processes communicate by sending messages that are encoded by the sender and decoded by the recipient.
-  
+The central lesson: Design data contracts for change, not just for the versions running today.
