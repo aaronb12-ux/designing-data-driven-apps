@@ -1,137 +1,239 @@
 # Single-Leader Replication
 
-There is a **leader replica** that clients send write requests to.
+Single-leader replication keeps copies of data on multiple database nodes:
 
-The other replicas are called **followers**. The leader sends all data changes to its followers as part of a **replication log** or **change stream**, and the followers update their databases accordingly.
+- Leader: Accepts writes.
+- Followers: Receive and apply changes from the leader.
 
-A client can query either the leader or a follower:
+The leader communicates changes through a replication log or change stream.
 
-- **Writes:** Can only be performed through the leader.
-- **Reads:** Can be performed from any replica.
+```text
+Client writes → Leader
+                  ├─ Replication → Follower
+                  └─ Replication → Follower
+```
 
-Single-leader replication is built into many databases, including:
+Clients may read from the leader or from followers that support reads. Some standbys are reserved for recovery and do not serve queries. PostgreSQL supports both arrangements. [108]
 
-- PostgreSQL
-- MySQL
-- MongoDB
-- DynamoDB
+<img width="346" height="158" alt="Single-leader replication with writes to the leader and changes propagated to followers" src="https://github.com/user-attachments/assets/9d40fa3a-d154-49aa-8c79-a806424500dd" />
 
-<img width="346" height="158" alt="Single-leader replication diagram" src="https://github.com/user-attachments/assets/9d40fa3a-d154-49aa-8c79-a806424500dd" />
+> Replication can improve availability and distribute reads. Adding followers does not automatically increase write capacity, because writes still pass through the leader.
 
-## Synchronous vs. Asynchronous Replication
+## 1. Synchronous vs. Asynchronous Replication
+
+The key question is:
+
+> What must happen before the leader tells the client that a write succeeded?
+
+| Mode | When the leader responds | Main trade-off |
+|---|---|---|
+| Synchronous | After the required followers acknowledge the change. | Better protection against leader loss, but additional latency and dependence on those followers. |
+| Asynchronous | Without waiting for follower acknowledgment. | Lower replication-related write latency, but acknowledged writes may be lost during failover. |
+
+An acknowledgment can mean different things: The follower has received the change, persisted it, or applied it so queries can see it. The exact guarantee depends on configuration. [104][111]
 
 ### Synchronous Replication
 
-With **synchronous replication**, the leader waits for a follower to confirm that the write has been successfully replicated before considering the operation complete.
+The leader waits for the configured acknowledgment requirement.
 
-In a strict synchronous setup, the leader must wait for all designated synchronous replicas to log or apply the change and send back an acknowledgment before it can tell the client, `"Success."`
+This does not necessarily mean waiting for every follower. A system might require one designated follower or a specified number of followers. [109]
 
-**Advantages:**
-
-- Stronger durability because the write exists on multiple replicas before the client receives success.
-
-**Disadvantages:**
-
-- Higher latency.
-- If a required follower is unavailable, writes may be delayed or fail.
+If the requirement cannot be met, writes may block or fail.
 
 ### Asynchronous Replication
 
-With **asynchronous replication**, the leader does not wait for followers to confirm that they have completed the write before responding to the client.
+The leader responds before followers necessarily have the change.
 
-**Advantages:**
+```text
+Leader accepts write
+        ↓
+Client receives success
+        ↓
+Leader crashes before replication
+        ↓
+Promoted follower does not contain the write
+```
 
-- Lower write latency.
-- The leader can continue accepting writes even if a follower is temporarily unavailable.
+The write may have been durable on the original leader but still be absent from the new leader.
 
-**Disadvantage:**
+### Majority Acknowledgments
 
-- Weaker durability. If a write is made to the leader and the leader fails before the write is replicated, that write may be lost.
+Some systems require acknowledgments from a majority of voting replicas.
 
-### Quorum-Based Replication
+This can provide strong protection when combined with the system's election and commit rules. Majority acknowledgment alone is not a complete failover protocol.
 
-A common approach is to require a **majority of replicas** to acknowledge a write synchronously while the remaining replicas replicate asynchronously.
+> Evaluate acknowledgment requirements together with persistence guarantees and rules for choosing a new leader—not just the number of copies.
 
-This provides a balance between durability and performance.
+## 2. Replication Lag and Reads
 
-**Key idea:** The more replicas that must acknowledge a write before success is returned, the stronger the durability guarantee, but generally at the cost of higher latency and lower availability when replicas are unavailable.
+A follower may temporarily trail the leader. This delay is replication lag.
 
-## Setting Up New Followers
+For example:
 
-Setting up a new follower typically occurs through the following process:
+1. A user updates their profile through the leader.
+2. Their next request reads from a lagging follower.
+3. They see the previous profile value.
 
-1. **Take a snapshot** of the leader's database at some point in time without locking the entire database.
-2. **Copy the snapshot** to the new follower node.
-3. The follower connects to the leader and requests all changes made since the snapshot was taken.
-4. The snapshot must therefore be associated with an **exact position in the leader's replication log** so the follower knows where to resume.
-5. Once the follower has processed all of the changes that occurred after the snapshot, we say that the follower has **caught up**.
+Even synchronous replication does not imply every follower has applied the latest write. Acknowledgment may require persistence rather than query visibility, and some followers may replicate asynchronously. [104][111]
 
-### Databases Backed by Object Storage
+> Decide which reads can tolerate stale data before routing them to followers.
 
-**Object storage** is used to store large amounts of unstructured data at massive scale.
+## 3. Setting Up a New Follower
 
-#### Advantages of Object Storage
+A new follower needs both an initial copy and the changes made while that copy is being transferred.
 
-- Useful for storing data that is not queried as frequently because object storage is inexpensive compared with typical cloud storage options.
-- Object stores can provide **multi-zone, dual-region, or multi-region replication** with very high durability guarantees.
+Typical process:
 
-#### Tradeoffs
+1. Take a consistent snapshot using the database's supported backup mechanism.
+2. Associate it with a position in the replication log.
+3. Restore the snapshot on the new follower.
+4. Replay changes after that position.
+5. Continue receiving new changes.
 
-- Object stores generally have much higher read and write latencies than local disks.
-- Objects are often **immutable**. Because an object is immutable, you cannot open an object, change a few bytes in the middle, and save it. Instead, you must upload a completely new version of the entire object to replace the old one.
+```text
+Snapshot at position X
+        +
+Log entries after X
+        =
+Up-to-date follower
+```
 
-## Handling Node Outages
+The required log history must remain available until the follower has consumed it. Otherwise, a new snapshot may be necessary. [104][105]
 
-The goal of replication is to keep the system as a whole running despite individual node failures and to keep the impact of a node outage as small as possible.
+## 4. Follower Failure: Catch-Up Recovery
 
-### Follower Failure: Catch-Up Recovery
+After a crash or network interruption, a follower can resume from a safely recorded replication position.
 
-Each follower keeps a log of the data changes it has received from the leader on its local disk.
+Recovery requires:
 
-If a follower crashes, or if the network connection between the follower and leader is disrupted, the follower can recover from its log.
+- The follower's existing data to remain usable.
+- The needed log history to remain available.
+- Enough capacity to replay the backlog while new writes continue arriving.
 
-The follower knows the last transaction or log position it successfully processed and can request the changes that occurred after that point from the leader.
+A long outage can create substantial catch-up work. Retaining logs for followers also consumes storage on the source system. [104][113]
 
-Although this process is relatively simple, it can become a performance challenge.
+If the required history is gone, the follower may need to be rebuilt.
 
-If a follower is down for a long time, there may be a large number of writes that it needs to catch up on. This creates work for both:
+## 5. Leader Failure: Failover
 
-- **The leader:** It must send the backlog of writes to the follower.
-- **The follower:** It must process and apply the backlog of writes.
+Failover promotes a follower so the system can resume accepting writes.
 
-### Leader Failure: Failover
+Typical steps:
 
-The goal of **failover** is to continue accepting writes when the leader fails.
+1. Detect that the leader appears unavailable.
+2. Select an eligible follower under the system's failover rules.
+3. Prevent the old leader from continuing to accept conflicting writes.
+4. Promote the replacement.
+5. Redirect clients and reconnect other followers.
 
-The basic process is:
+### Failure Detection Is Uncertain
 
-1. **Determine that the leader has failed.**
-2. **Choose a new leader:** Typically, the follower with the most up-to-date data from the old leader is chosen.
-3. **Reconfigure the system:** Clients must be directed to the new leader, and the other followers must begin consuming data changes from the new leader.
+A timeout does not prove a machine has crashed. The leader may still be running but unreachable because of a network problem.
 
-#### Problems with Failover
+This uncertainty is one reason failover is difficult.
 
-Things can go wrong during failover.
+### Lost Writes
 
-**1. Lost writes**
+With asynchronous replication, the promoted follower may lack writes already acknowledged by the old leader.
 
-With asynchronous replication, writes accepted by the previous leader may not have reached any followers before the leader failed. Those writes can therefore be lost when a new leader is chosen.
+Choosing an up-to-date follower reduces this risk, but cannot recover changes that never reached any surviving replica.
 
-**2. Split brain**
+### Split Brain and Fencing
 
-Two nodes can incorrectly believe that they are both the leader. This is known as **split brain**.
+Split brain occurs when multiple nodes act as leader for the same data.
 
-If both nodes accept writes, conflicting changes can occur and there may be no straightforward way to resolve them.
+If both accept writes, their histories can diverge.
 
-Protecting against this by limiting or shutting down the old leader after a new leader has been chosen is known as **fencing**.
+Fencing prevents an old or isolated leader from continuing to act as an authorized writer.
 
-**Most important consideration during failover:** Choose a follower that is as up-to-date as possible so that as few committed writes as possible are lost.
+> Safe failover requires more than picking the freshest follower. It must preserve the system's commit rules and prevent conflicting leaders.
 
-These problems—**node failures, unreliable networks, and trade-offs involving replica consistency, durability, availability, and latency**—are fundamental problems in distributed systems.
+## 6. How Replication Logs Represent Changes
 
-## Implementation of Replication Logs
+### Statement-Based Replication
 
-    
+Send the operations that produced the changes:
+
+```sql
+UPDATE accounts
+SET balance = balance - 100
+WHERE id = 42;
+```
+
+Followers execute the statements.
+
+Potential problems include:
+
+- Nondeterministic expressions producing different values.
+- Different execution ordering changing results.
+- Triggers or other side effects behaving differently.
+
+The system needs rules or restrictions that make replay produce the intended result.
+
+### Physical Replication / WAL Shipping
+
+Send low-level storage changes through the write-ahead log, or WAL.
+
+Followers replay those changes to maintain a compatible physical copy.
+
+Advantages:
+
+- Closely reproduces the leader's storage changes.
+- Does not require re-executing the original application SQL.
+
+Trade-off:
+
+- Tight coupling to the storage engine and supported database versions.
+
+PostgreSQL physical replication uses WAL and generally requires matching major versions, which limits its use for major-version rolling upgrades. [104]
+
+### Logical / Row-Based Replication
+
+Send logical changes to records rather than physical storage details.
+
+Conceptually:
+
+```text
+Table: users
+Operation: UPDATE
+Key: id = 42
+Changed value: name = "Alex"
+```
+
+Logical replication is less tied to the physical storage format. It can support selected-table replication and, where supported, migration between database versions. [103][106]
+
+However, schema compatibility and supported operations still matter.
+
+### Comparison
+
+| Method | What is replicated | Main concern |
+|---|---|---|
+| Statement-based | Operations to execute. | Replaying them must produce equivalent results. |
+| Physical / WAL | Low-level storage changes. | Storage-format and version compatibility. |
+| Logical / row-based | Record-level changes. | Compatible schemas and interpretation of changes. |
+
+## 7. Object Storage: A Related but Separate Topic
+
+Some database architectures use object storage for durable database files, logs, or snapshots.
+
+For these notes, keep it separate from the replication model:
+
+- Replication describes how database copies receive changes.
+- Object storage describes where some underlying data is stored.
+
+You do not need object-storage internals to understand single-leader replication.
+
+## What to Remember
+
+- One leader accepts writes; followers apply replicated changes.
+- Follower reads can be stale.
+- Synchronous replication waits for a configured acknowledgment requirement—not necessarily every replica.
+- Asynchronous replication can lose acknowledged writes during failover.
+- New and recovering followers need a snapshot or existing state plus sufficient log history.
+- Failover must prevent conflicting leaders, not merely promote another node.
+- Physical replication copies storage-level changes; logical replication communicates record-level changes.
+- Always ask: “What does success guarantee, and which failures does that guarantee cover?”
+ 
   
 
 
