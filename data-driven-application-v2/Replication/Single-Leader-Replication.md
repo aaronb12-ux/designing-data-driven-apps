@@ -223,6 +223,81 @@ For these notes, keep it separate from the replication model:
 
 You do not need object-storage internals to understand single-leader replication.
 
+## 8. Problems With Replication Lag
+
+Read scaling means creating multiple followers and distributing read traffic across them.
+
+Asynchronous replication allows the leader to continue accepting writes without waiting for every follower. Requiring every follower to acknowledge writes would make write availability depend on all of them.
+
+The trade-off is that followers may temporarily return outdated information.
+
+If writes stop and replication continues successfully, followers eventually catch up with the leader. This behavior is called eventual consistency. The delay between a change on the leader and its appearance on a follower is replication lag.
+
+### Reading Your Own Writes
+
+A user may submit an update, reload the page, and not see it because the read was served by a lagging follower.
+
+<img width="470" height="220" alt="A user reading from a lagging follower after submitting an update" src="https://github.com/user-attachments/assets/5aecb1a0-6cd1-4a0a-8a1f-a7e093c62e55" />
+
+Read-after-write consistency guarantees that a user's subsequent reads reflect their own successful writes.
+
+For example, after submitting a discussion comment, the user should see that comment when they reload the thread.
+
+Possible approaches:
+
+- Read recently modified information from the leader or a follower known to have applied the write.
+- Use a simple routing rule, such as reading a user's own profile from the leader and other users' profiles from followers.
+- Track the position of the user's latest write and serve subsequent reads only from a replica that has reached at least that position.
+
+A replication position or logical timestamp can identify the required progress; it need not be a wall-clock time.
+
+#### Cross-Device Read-After-Write Consistency
+
+A user who updates information on one device should also see the update when reading from another.
+
+This introduces additional coordination:
+
+- The second device may not know about the first device's latest write.
+- Tracking the required replication position only on one device is therefore insufficient.
+- Shared, server-side metadata can track the user's latest required position.
+- If devices connect through different regions, routing must account for whether the selected replica has received the update.
+
+Routing all of a user's devices to the same region is one possible approach, not a universal requirement.
+
+### Monotonic Reads
+
+A user may first read from an up-to-date replica and then from a lagging replica, making information appear to disappear.
+
+Monotonic reads guarantee that a user's successive reads do not move backward to an older state.
+
+<img width="352" height="216" alt="A user seeing newer data followed by older data when reading from different replicas" src="https://github.com/user-attachments/assets/ede7ea5b-9e0f-4d90-910d-cfbaea9a0adf" />
+
+One approach is to route each user's reads to the same replica, while distributing different users across replicas.
+
+If that replica becomes unavailable, switching to another replica must preserve the user's required progress.
+
+> Read-after-write consistency protects visibility of your own writes. Monotonic reads protect against losing visibility of data you have already seen.
+
+### Consistent Prefix Reads
+
+Consistent prefix reads preserve the ordering of a sequence of writes.
+
+If one write depends on an earlier write, readers should not see the later write without the earlier one.
+
+For example, a discussion reply should not appear before the message it answers.
+
+<img width="341" height="257" alt="Related writes appearing out of order because of replication delays" src="https://github.com/user-attachments/assets/faed51ae-987f-4f88-b9c2-879145650c30" />
+
+This becomes more difficult when related writes are spread across shards that replicate independently. Each shard may preserve its own order without automatically preserving the order across shards.
+
+### Comparing the Guarantees
+
+| Guarantee | What it prevents |
+|---|---|
+| Read-after-write consistency | Your successful update appears missing when you read afterward. |
+| Monotonic reads | Data you have already seen disappears because a later read returns older state. |
+| Consistent prefix reads | Related writes become visible in the wrong order. |
+
 ## What to Remember
 
 - One leader accepts writes; followers apply replicated changes.
@@ -233,10 +308,3 @@ You do not need object-storage internals to understand single-leader replication
 - Failover must prevent conflicting leaders, not merely promote another node.
 - Physical replication copies storage-level changes; logical replication communicates record-level changes.
 - Always ask: “What does success guarantee, and which failures does that guarantee cover?”
- 
-  
-
-
-
-
-
