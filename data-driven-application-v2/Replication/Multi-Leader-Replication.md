@@ -52,6 +52,6 @@ The photo above shows how between regions, each leader replicates its changes to
       In all to all topologies, some network links may be faster than others, with the result that some replication messages may "overtake" others, as shown below.
 
 
-      <img width="605" height="353" alt="Screenshot 2026-11-25 at 2 49 00 AM" src="https://github.com/user-attachments/assets/ac32b8e0-57b2-4359-bf72-091fa09e419d" />
+<img width="605" height="353" alt="Screenshot 2026-11-25 at 2 49 00 AM" src="https://github.com/user-attachments/assets/ac32b8e0-57b2-4359-bf72-091fa09e419d" />
 
   
