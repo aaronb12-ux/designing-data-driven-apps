@@ -298,6 +298,10 @@ This becomes more difficult when related writes are spread across shards that re
 | Monotonic reads | Data you have already seen disappears because a later read returns older state. |
 | Consistent prefix reads | Related writes become visible in the wrong order. |
 
+### Solution To Replication Lag
+
+A number of databases have started providing strong consistency and transaction support while also offering the fault tolerance, high availability, and scalability advantages of a distributed database.
+
 ## What to Remember
 
 - One leader accepts writes; followers apply replicated changes.
